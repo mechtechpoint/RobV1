@@ -45,26 +45,23 @@ def send_camera_frames(websocket):
     global camera_running, loop
     container = av.open("/dev/video1", format="v4l2")
     frame_counter = 0
-
+    
     for frame in container.decode(video=0):
         if not camera_running:
             break
-
+        
         if frame_counter % 6 == 0:
             img_rgb = frame.to_rgb().to_ndarray()
             pil_image = Image.fromarray(img_rgb)
-
-            # Konwersja do JPEG, redukcja jakości do zmniejszenia rozmiaru
             img_io = io.BytesIO()
-            pil_image.save(img_io, format="JPEG", quality=50)  # Zmniejszamy jakość do 50%
+            pil_image.save(img_io, format="JPEG", quality=50)
             img_bytes = base64.b64encode(img_io.getvalue()).decode('utf-8')
-
-            # Wysyłanie obrazu
+            
             if loop and loop.is_running():
                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
-
+        
         frame_counter += 1
-
+    
     container.close()
 
 def start_camera_thread(websocket):
@@ -74,11 +71,15 @@ def start_camera_thread(websocket):
         camera_thread = threading.Thread(target=send_camera_frames, args=(websocket,))
         camera_thread.start()
 
-def stop_camera_thread():
+def stop_camera_thread(websocket):
     global camera_running
     camera_running = False
     if camera_thread:
         camera_thread.join()
+    
+    # Wysłanie pustego obrazu po wyłączeniu kamery
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": ""})), loop)
 
 async def listen():
     global local_settings, loop
@@ -88,12 +89,11 @@ async def listen():
 
     async with websockets.connect(uri) as websocket:
         print("Połączono z serwerem WebSocket (Orange Pi)")
-        loop = asyncio.get_running_loop()  # Pobieramy event loop
+        loop = asyncio.get_running_loop()
 
         try:
             while True:
                 message = await websocket.recv()
-                print(f"Otrzymano wiadomość: {message}")
                 data = json.loads(message)
                 msg_type = data.get("type")
 
@@ -104,9 +104,11 @@ async def listen():
                 else:
                     command = data.get("command", "")
                     if command == "camera_on":
+                        print("Uruchamiam kamerę...")
                         start_camera_thread(websocket)
                     elif command == "camera_off":
-                        stop_camera_thread()
+                        print("Wyłączam kamerę...")
+                        stop_camera_thread(websocket)
                     else:
                         handle_motor_command(command)
         except websockets.exceptions.ConnectionClosed as e:
@@ -119,10 +121,7 @@ def handle_motor_command(command):
     calib_left = local_settings.get("engine_left_calib", 1.0)
     calib_right = local_settings.get("engine_right_calib", 1.0)
     
-    direction1 = 0
-    speed1 = 0
-    direction2 = 0
-    speed2 = 0
+    direction1, speed1, direction2, speed2 = 0, 0, 0, 0
     
     if command == "go":
         direction1, direction2 = 1, 0
@@ -142,7 +141,7 @@ def handle_motor_command(command):
         print(f"Nieznana komenda: {command}")
         return
     
-    to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\\n"
+    to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
     ser.write(to_send.encode('utf-8'))
     print(f"Wysłano do Arduino: {to_send}")
 
