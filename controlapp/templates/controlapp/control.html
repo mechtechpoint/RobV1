@@ -19,8 +19,10 @@
     </div>
     
     <!-- Miejsce na wyświetlanie obrazu z kamery -->
-    <div>
-        <img id="cameraFeed" width="640" height="480" style="border: 1px solid black;"/>
+    <div style="display: flex; justify-content: center; align-items: center; height: 300px;">
+        <div id="cameraContainer" style="width: 320px; height: 240px; overflow: hidden; border: 1px solid black;">
+            <img id="cameraFeed" style="width: 100%; height: 100%; object-fit: contain;" />
+        </div>
     </div>
 
     <div class="logout-container">
@@ -38,7 +40,6 @@
 
 
     <script>
-        // Adres WebSocket (taki sam, jak poprzednio)
         let socket = new WebSocket("ws://57.128.201.199:8005/ws/control/");
     
         socket.onopen = function() {
@@ -47,10 +48,14 @@
     
         socket.onmessage = function(event) {
             let data = JSON.parse(event.data);
-
+            let img = document.getElementById("cameraFeed");
+    
             if (data.image) {
-                let img = document.getElementById("cameraFeed");
-                img.src = "data:image/jpeg;base64," + data.image;
+                if (data.image === "") {
+                    img.src = "";  // Oczyszczanie obrazu po camera_off
+                } else {
+                    img.src = "data:image/jpeg;base64," + data.image;
+                }
             }
         };
     
@@ -59,7 +64,17 @@
         };
     
         function sendCommand(command) {
+            if (command === "camera_off") {
+                let img = document.getElementById("cameraFeed");
+                img.src = ""; // Od razu ukrywamy obraz
+    
+                // Ustawienie opóźnionego odświeżenia strony po 0.5 sekundy
+                setTimeout(() => {
+                    location.reload();
+                }, 1500);
+            }
             socket.send(JSON.stringify({"command": command}));
         }
     </script>
+    
 {% endblock %}
