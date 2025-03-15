@@ -22,6 +22,7 @@ camera_running = False
 loop = None  # Przechowuje event loop dla WebSocket
 
 def load_local_settings():
+    """ Wczytuje plik settings.json za każdym razem, gdy jest potrzebny """
     if not os.path.exists(LOCAL_SETTINGS_PATH):
         default_data = {
             "step_time_go": 250,
@@ -38,6 +39,7 @@ def load_local_settings():
         return json.load(f)
 
 def save_local_settings(data):
+    """ Zapisuje dane do settings.json """
     with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
@@ -50,7 +52,8 @@ def send_camera_frames(websocket):
         if not camera_running:
             break
         
-        if frame_counter % 6 == 0:
+        if frame_counter % 3 == 0:
+            frame_counter = 0
             img_rgb = frame.to_rgb().to_ndarray()
             pil_image = Image.fromarray(img_rgb)
             img_io = io.BytesIO()
@@ -61,6 +64,8 @@ def send_camera_frames(websocket):
                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
         
         frame_counter += 1
+        
+
     
     container.close()
 
@@ -83,7 +88,7 @@ def stop_camera_thread(websocket):
 
 async def listen():
     global local_settings, loop
-    local_settings = load_local_settings()
+    local_settings = load_local_settings()  # Pierwsze wczytanie ustawień
 
     uri = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
 
@@ -95,6 +100,13 @@ async def listen():
             while True:
                 message = await websocket.recv()
                 data = json.loads(message)
+                
+                # Jeśli serwer wysłał aktualizację ustawień
+                if data.get("type") == "settings_update":
+                    print("Otrzymano aktualizację ustawień, ponowne wczytanie...")
+                    local_settings = load_local_settings()
+                    continue
+
                 command = data.get("command", "")
                 
                 if command == "camera_on":
@@ -112,6 +124,10 @@ async def listen():
             print(f"WebSocket zamknięty: {e}")
 
 def handle_motor_command(command):
+    """ Pobiera NAJNOWSZE ustawienia przed wysłaniem do Arduino """
+    global local_settings
+    local_settings = load_local_settings()  # Dynamicznie wczytujemy ustawienia
+
     st_go = local_settings.get("step_time_go", 250)
     st_back = local_settings.get("step_time_back", 250)
     st_turn = local_settings.get("step_time_turn", 250)
