@@ -7,6 +7,8 @@ import threading
 import av
 import base64
 import numpy as np
+import io
+from PIL import Image
 
 arduino_port = "/dev/ttyUSB0"
 baud_rate = 9600
@@ -43,21 +45,26 @@ def send_camera_frames(websocket):
     global camera_running, loop
     container = av.open("/dev/video1", format="v4l2")
     frame_counter = 0
-    
+
     for frame in container.decode(video=0):
         if not camera_running:
             break
-        
+
         if frame_counter % 6 == 0:
             img_rgb = frame.to_rgb().to_ndarray()
-            img_bytes = base64.b64encode(img_rgb.tobytes()).decode('utf-8')
+            pil_image = Image.fromarray(img_rgb)
 
-            # Wysyłanie obrazu w głównym event loopie
+            # Konwersja do JPEG, redukcja jakości do zmniejszenia rozmiaru
+            img_io = io.BytesIO()
+            pil_image.save(img_io, format="JPEG", quality=50)  # Zmniejszamy jakość do 50%
+            img_bytes = base64.b64encode(img_io.getvalue()).decode('utf-8')
+
+            # Wysyłanie obrazu
             if loop and loop.is_running():
                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
-        
+
         frame_counter += 1
-    
+
     container.close()
 
 def start_camera_thread(websocket):
