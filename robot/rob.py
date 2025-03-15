@@ -3,22 +3,22 @@ import websockets
 import json
 import serial
 import os
+import threading
+import av
+import base64
+import numpy as np
 
 arduino_port = "/dev/ttyUSB0"
 baud_rate = 9600
 ser = serial.Serial(arduino_port, baud_rate)
 
-# Ścieżka do lokalnego pliku z ustawieniami
 LOCAL_SETTINGS_PATH = "settings.json"
-
-# Zmienna globalna z ustawieniami
 local_settings = {}
 
+camera_thread = None
+camera_running = False
+
 def load_local_settings():
-    """
-    Wczytuje plik settings.json z dysku Orange Pi
-    i zwraca słownik. Jeśli nie istnieje, tworzy z domyślnymi wartościami.
-    """
     if not os.path.exists(LOCAL_SETTINGS_PATH):
         default_data = {
             "step_time_go": 250,
@@ -30,22 +30,50 @@ def load_local_settings():
         with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=4)
         return default_data
-
+    
     with open(LOCAL_SETTINGS_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_local_settings(data):
-    """
-    Zapisuje słownik `data` do lokalnego pliku settings.json
-    """
     with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
+
+def send_camera_frames(websocket):
+    global camera_running
+    container = av.open("/dev/video1", format="v4l2")
+    frame_counter = 0
+    
+    for frame in container.decode(video=0):
+        if not camera_running:
+            break
+        
+        if frame_counter % 6 == 0:
+            img_rgb = frame.to_rgb().to_ndarray()
+            img_bytes = base64.b64encode(img_rgb.tobytes()).decode('utf-8')
+            
+            asyncio.run(websocket.send(json.dumps({"image": img_bytes})))
+        
+        frame_counter += 1
+    
+    container.close()
+
+def start_camera_thread(websocket):
+    global camera_thread, camera_running
+    if camera_thread is None or not camera_thread.is_alive():
+        camera_running = True
+        camera_thread = threading.Thread(target=send_camera_frames, args=(websocket,))
+        camera_thread.start()
+
+def stop_camera_thread():
+    global camera_running
+    camera_running = False
+    if camera_thread:
+        camera_thread.join()
 
 async def listen():
     global local_settings
     local_settings = load_local_settings()
 
-    # Dodaj token, jeśli wymagany
     uri = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
 
     async with websockets.connect(uri) as websocket:
@@ -55,82 +83,54 @@ async def listen():
             while True:
                 message = await websocket.recv()
                 print(f"Otrzymano wiadomość: {message}")
-
                 data = json.loads(message)
                 msg_type = data.get("type")
 
-                # 1) Jeśli to jest event 'settings_update' -> zapisz w pliku
                 if msg_type == "settings_update":
                     new_settings = data.get("settings_data", {})
-                    print("Aktualizacja ustawień lokalnych z serwera:", new_settings)
-
-                    # Nadpisz nasz plik settings.json i pamięć
                     save_local_settings(new_settings)
                     local_settings = new_settings
-
-                # 2) Jeśli to jest event 'motor_command' (jak w Twoim kacie),
-                #    albo "command" wysłane przez panel:
                 else:
                     command = data.get("command", "")
-                    handle_motor_command(command)
+                    if command == "camera_on":
+                        start_camera_thread(websocket)
+                    elif command == "camera_off":
+                        stop_camera_thread()
+                    else:
+                        handle_motor_command(command)
         except websockets.exceptions.ConnectionClosed as e:
             print(f"WebSocket zamknięty: {e}")
 
 def handle_motor_command(command):
-    """
-    Obsługa komendy i wysyłanie do Arduino
-    """
-    # Odczyt z globalnych ustawień:
     st_go = local_settings.get("step_time_go", 250)
     st_back = local_settings.get("step_time_back", 250)
     st_turn = local_settings.get("step_time_turn", 250)
     calib_left = local_settings.get("engine_left_calib", 1.0)
     calib_right = local_settings.get("engine_right_calib", 1.0)
-
+    
     direction1 = 0
     speed1 = 0
     direction2 = 0
     speed2 = 0
-
+    
     if command == "go":
-        # direction1 = 1 -> wprzód, direction2 = 0 -> wprzód
-        direction1 = 1
-        direction2 = 0
-        # prędkość = step_time_go * kalibracja
-        speed1 = st_go * calib_left
-        speed2 = st_go * calib_right
-
+        direction1, direction2 = 1, 0
+        speed1, speed2 = st_go * calib_left, st_go * calib_right
     elif command == "back":
-        direction1 = 0
-        direction2 = 1
-        speed1 = st_back * calib_left
-        speed2 = st_back * calib_right
-
+        direction1, direction2 = 0, 1
+        speed1, speed2 = st_back * calib_left, st_back * calib_right
     elif command == "left":
-        # skręt w lewo -> silnik lewy wolniej, silnik prawy szybciej
-        # (ale w zależności od Twojej fizycznej konfiguracji)
-        direction1 = 0
-        direction2 = 0
-        speed1 = st_turn * calib_left
-        speed2 = st_turn * calib_right
-
+        direction1, direction2 = 0, 0
+        speed1, speed2 = st_turn * calib_left, st_turn * calib_right
     elif command == "right":
-        direction1 = 1
-        direction2 = 1
-        speed1 = st_turn * calib_left
-        speed2 = st_turn * calib_right
-
+        direction1, direction2 = 1, 1
+        speed1, speed2 = st_turn * calib_left, st_turn * calib_right
     elif command == "stop":
-        direction1 = 0
-        speed1 = 0
-        direction2 = 0
-        speed2 = 0
-
+        direction1, speed1, direction2, speed2 = 0, 0, 0, 0
     else:
         print(f"Nieznana komenda: {command}")
         return
-
-    # Wyślij do Arduino
+    
     to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
     ser.write(to_send.encode('utf-8'))
     print(f"Wysłano do Arduino: {to_send}")
