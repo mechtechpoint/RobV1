@@ -1,0 +1,49 @@
+{% extends "controlapp/base.html" %}
+{% block title %}Panel Sterowania{% endblock %}
+
+{% block content %}
+    <h3>Control Panel</h3>
+    
+    <div class="button-container">
+        <button class="motor-btn" onclick="sendCommand('go')">GO</button>
+        <button class="motor-btn" onclick="sendCommand('back')">BACK</button>
+        <button class="motor-btn" onclick="sendCommand('left')">LEFT</button>
+        <button class="motor-btn" onclick="sendCommand('right')">RIGHT</button>
+        <button class="motor-btn" onclick="sendCommand('stop')">STOP</button>
+    </div>
+
+    <div class="logout-container">
+        <form method="post" action="{% url 'logout' %}" style="display: inline;">
+            {% csrf_token %}
+            <button class="logout-btn" type="submit">Logout</button>
+        </form>
+        <!-- Zamiast alertu -> link do /settings/ -->
+        <a href="{% url 'settings' %}">
+            <button class="settings-btn">
+                Settings
+            </button>
+        </a>
+    </div>
+
+    <script>
+        // Zmienna z adresem WebSocket (dopasuj w razie potrzeby)
+        let socket = new WebSocket("ws://57.128.201.199:8005/ws/control/");
+
+        socket.onopen = function() {
+            console.log("Połączono z serwerem WebSocket (przeglądarka)");
+        };
+
+        socket.onmessage = function(event) {
+            let data = JSON.parse(event.data);
+            console.log("Otrzymano:", data.command);
+        };
+
+        socket.onclose = function(e) {
+            console.log("Połączenie WebSocket zamknięte", e);
+        };
+
+        function sendCommand(command) {
+            socket.send(JSON.stringify({"command": command}));
+        }
+    </script>
+{% endblock %}

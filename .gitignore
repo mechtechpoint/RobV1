@@ -1,0 +1,11 @@
+# Ignorowanie bazy danych SQLite
+db.sqlite3
+
+# Ignorowanie plików konfiguracyjnych
+manage.py
+settings.py
+
+
+# Ignorowanie katalogów tymczasowych i skompilowanych plików Pythona
+__pycache__/
+migrations/

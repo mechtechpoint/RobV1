@@ -1,0 +1,32 @@
+{% extends "controlapp/base.html" %}
+{% block title %}Ustawienia{% endblock %}
+
+{% block content %}
+<h3>Settings</h3>
+
+<form method="POST">
+    {% csrf_token %}
+
+    <label>Step time GO [us]:</label>
+    <input type="number" step="0.1" name="step_time_go" value="{{ settings_data.step_time_go }}"><br><br>
+
+    <label>Step time BACK [us]:</label>
+    <input type="number" step="0.1" name="step_time_back" value="{{ settings_data.step_time_back }}"><br><br>
+
+    <label>Step time TURN [us]:</label>
+    <input type="number" step="0.1" name="step_time_turn" value="{{ settings_data.step_time_turn }}"><br><br>
+
+    <label>Engine LEFT calib:</label>
+    <input type="number" step="0.01" name="engine_left_calib" value="{{ settings_data.engine_left_calib }}"><br><br>
+
+    <label>Engine RIGHT calib:</label>
+    <input type="number" step="0.01" name="engine_right_calib" value="{{ settings_data.engine_right_calib }}"><br><br>
+
+    <button type="submit">Save</button>
+</form>
+
+<br>
+
+<!-- Przyciski na dole: Zapis i Wstecz -->
+<button type="button" onclick="window.location.href='{% url 'control' %}'">Back</button>
+{% endblock %}

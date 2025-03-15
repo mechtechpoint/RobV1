@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Aplikacja{% endblock %}</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+        }
+
+        /* Ogólne dla przycisków */
+        button {
+            width: 150px;
+            height: 50px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            transition: background-color 0.3s;
+            margin: 5px; /* Podstawowy odstęp */
+        }
+        button:hover {
+            filter: brightness(90%);
+        }
+
+        /* Przyciski sterowania (domyślny niebieski) */
+        .motor-btn {
+            background-color: #007bff;
+        }
+
+        /* Przycisk WYLOGUJ (czerwony) */
+        .logout-btn {
+            background-color: #dc3545; 
+        }
+
+        /* Przycisk SETTINGS (zielony) */
+        .settings-btn {
+            background-color: #28a745;
+        }
+
+        .button-container {
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+        .logout-container {
+            margin-top: 20px;
+        }
+
+        input {
+            width: 300px;
+            height: 40px;
+            font-size: 18px;
+            margin: 10px 0;
+            padding: 5px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
