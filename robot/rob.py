@@ -100,16 +100,9 @@ async def listen():
                 
                 # Jeśli serwer wysłał aktualizację ustawień
                 if data.get("type") == "settings_update":
-                    print("Otrzymano aktualizację ustawień, ponowne wczytanie...")
-                    new_settings = load_local_settings()
-                    
-                    # Sprawdzamy, czy ustawienia rzeczywiście się zmieniły
-                    if new_settings != local_settings:
-                        local_settings = new_settings
-                        print(f"Nowe ustawienia załadowane: {local_settings}")
-                    else:
-                        print("Ustawienia nie uległy zmianie, pomijam wczytanie.")
-
+                    print("Otrzymano nowe ustawienia, zapisuję i ładuję...")
+                    update_local_settings(data["settings"])  # Zapisz i odśwież globalną zmienną
+                    print(f"Nowe ustawienia: {local_settings}")
                     continue
 
                 command = data.get("command", "")
@@ -121,14 +114,20 @@ async def listen():
                     print("Wyłączam kamerę...")
                     stop_camera_thread(websocket)
                 elif command in ["go", "back", "left", "right", "stop"]:
-                    handle_motor_command(command)
+                    handle_motor_command(command)  # Używa zaktualizowanego `local_settings`
                 else:
                     continue
         except websockets.exceptions.ConnectionClosed as e:
             print(f"WebSocket zamknięty: {e}")
 
+def update_local_settings(new_settings):
+    """ Zapisuje nowe ustawienia do settings.json i aktualizuje zmienną globalną """
+    global local_settings
+    save_local_settings(new_settings)  # Zapisz do pliku
+    local_settings = load_local_settings()  # Wczytaj do globalnej zmiennej
+
 def handle_motor_command(command):
-    """ Pobiera NAJNOWSZE ustawienia przed wysłaniem do Arduino """
+    """ Używa globalnej zmiennej `local_settings` zamiast czytać plik za każdym razem """
     global local_settings
 
     st_go = local_settings.get("step_time_go", 250)
