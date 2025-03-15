@@ -1,5 +1,5 @@
 {
-    "step_time_go": 100.0,
+    "step_time_go": 200.0,
     "step_time_back": 250.0,
     "step_time_turn": 400.0,
     "engine_left_calib": 1.0,

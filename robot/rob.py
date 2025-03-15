@@ -1,34 +1,24 @@
 import asyncio
-import threading
 import websockets
 import json
 import serial
 import os
-import av
-import io
-import base64
-from PIL import Image
 
-# WebSocket do Django
-SERVER_WS_URL = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
-
-# Kamera
-VIDEO_DEVICE = "/dev/video1"
-
-# Flagi dla sterowania strumieniowaniem obrazu
-streaming_active = False
-streaming_thread = None
-
-# Ustawienia lokalne
-LOCAL_SETTINGS_PATH = "settings.json"
-
-# Port szeregowy do Arduino
 arduino_port = "/dev/ttyUSB0"
 baud_rate = 9600
 ser = serial.Serial(arduino_port, baud_rate)
 
+# Ścieżka do lokalnego pliku z ustawieniami
+LOCAL_SETTINGS_PATH = "settings.json"
+
+# Zmienna globalna z ustawieniami
+local_settings = {}
+
 def load_local_settings():
-    """Wczytuje ustawienia lokalne z pliku settings.json"""
+    """
+    Wczytuje plik settings.json z dysku Orange Pi
+    i zwraca słownik. Jeśli nie istnieje, tworzy z domyślnymi wartościami.
+    """
     if not os.path.exists(LOCAL_SETTINGS_PATH):
         default_data = {
             "step_time_go": 250,
@@ -45,87 +35,52 @@ def load_local_settings():
         return json.load(f)
 
 def save_local_settings(data):
-    """Zapisuje ustawienia lokalne do pliku settings.json"""
+    """
+    Zapisuje słownik `data` do lokalnego pliku settings.json
+    """
     with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-def stream_camera():
-    """Funkcja do strumieniowania obrazu w osobnym wątku"""
-    global streaming_active
-    container = av.open(VIDEO_DEVICE, format="v4l2")
-    frame_counter = 0
-
-    while streaming_active:
-        for frame in container.decode(video=0):
-            if not streaming_active:
-                break
-
-            frame_counter += 1
-            if frame_counter % 6 != 0:  # Wysyłaj co 6 klatkę (5 FPS)
-                continue
-
-            img = frame.to_image()
-            img_io = io.BytesIO()
-            img.save(img_io, format="JPEG", quality=75)
-            img_bytes = img_io.getvalue()
-
-            # Konwersja do base64
-            img_b64 = base64.b64encode(img_bytes).decode()
-
-            asyncio.run(send_frame(img_b64))
-
-    container.close()
-
-async def send_frame(img_b64):
-    """Wysyła obraz do serwera Django"""
-    try:
-        async with websockets.connect(SERVER_WS_URL) as websocket:
-            await websocket.send(json.dumps({"image": img_b64}))
-    except Exception as e:
-        print(f"Błąd podczas wysyłania obrazu: {e}")
-
 async def listen():
-    """Nasłuchuje komend z WebSocket serwera Django"""
-    global local_settings, streaming_active, streaming_thread
+    global local_settings
     local_settings = load_local_settings()
 
-    async with websockets.connect(SERVER_WS_URL) as websocket:
+    # Dodaj token, jeśli wymagany
+    uri = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
+
+    async with websockets.connect(uri) as websocket:
         print("Połączono z serwerem WebSocket (Orange Pi)")
 
-        while True:
-            message = await websocket.recv()
-            print(f"Otrzymano wiadomość: {message}")
+        try:
+            while True:
+                message = await websocket.recv()
+                print(f"Otrzymano wiadomość: {message}")
 
-            data = json.loads(message)
-            msg_type = data.get("type")
+                data = json.loads(message)
+                msg_type = data.get("type")
 
-            if msg_type == "settings_update":
-                new_settings = data.get("settings_data", {})
-                print("Aktualizacja ustawień lokalnych z serwera:", new_settings)
-                save_local_settings(new_settings)
-                local_settings = new_settings
+                # 1) Jeśli to jest event 'settings_update' -> zapisz w pliku
+                if msg_type == "settings_update":
+                    new_settings = data.get("settings_data", {})
+                    print("Aktualizacja ustawień lokalnych z serwera:", new_settings)
 
-            elif msg_type == "motor_command":
-                command = data.get("command", "")
-                handle_motor_command(command)
+                    # Nadpisz nasz plik settings.json i pamięć
+                    save_local_settings(new_settings)
+                    local_settings = new_settings
 
-            elif msg_type == "command":
-                command = data.get("command", "")
-                if command == "camera_on":
-                    if not streaming_active:
-                        streaming_active = True
-                        streaming_thread = threading.Thread(target=stream_camera, daemon=True)
-                        streaming_thread.start()
-                elif command == "camera_off":
-                    streaming_active = False
-                    if streaming_thread:
-                        streaming_thread.join()
-                        streaming_thread = None
+                # 2) Jeśli to jest event 'motor_command' (jak w Twoim kacie),
+                #    albo "command" wysłane przez panel:
                 else:
+                    command = data.get("command", "")
                     handle_motor_command(command)
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"WebSocket zamknięty: {e}")
 
 def handle_motor_command(command):
-    """Obsługuje komendy sterowania pojazdem i wysyła do Arduino"""
+    """
+    Obsługa komendy i wysyłanie do Arduino
+    """
+    # Odczyt z globalnych ustawień:
     st_go = local_settings.get("step_time_go", 250)
     st_back = local_settings.get("step_time_back", 250)
     st_turn = local_settings.get("step_time_turn", 250)
@@ -138,34 +93,44 @@ def handle_motor_command(command):
     speed2 = 0
 
     if command == "go":
+        # direction1 = 1 -> wprzód, direction2 = 0 -> wprzód
         direction1 = 1
         direction2 = 0
+        # prędkość = step_time_go * kalibracja
         speed1 = st_go * calib_left
         speed2 = st_go * calib_right
+
     elif command == "back":
         direction1 = 0
         direction2 = 1
         speed1 = st_back * calib_left
         speed2 = st_back * calib_right
+
     elif command == "left":
+        # skręt w lewo -> silnik lewy wolniej, silnik prawy szybciej
+        # (ale w zależności od Twojej fizycznej konfiguracji)
         direction1 = 0
         direction2 = 0
         speed1 = st_turn * calib_left
         speed2 = st_turn * calib_right
+
     elif command == "right":
         direction1 = 1
         direction2 = 1
         speed1 = st_turn * calib_left
         speed2 = st_turn * calib_right
+
     elif command == "stop":
         direction1 = 0
         speed1 = 0
         direction2 = 0
         speed2 = 0
+
     else:
         print(f"Nieznana komenda: {command}")
         return
 
+    # Wyślij do Arduino
     to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
     ser.write(to_send.encode('utf-8'))
     print(f"Wysłano do Arduino: {to_send}")
