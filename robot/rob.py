@@ -17,6 +17,7 @@ local_settings = {}
 
 camera_thread = None
 camera_running = False
+loop = None  # Przechowuje event loop dla WebSocket
 
 def load_local_settings():
     if not os.path.exists(LOCAL_SETTINGS_PATH):
@@ -39,7 +40,7 @@ def save_local_settings(data):
         json.dump(data, f, indent=4)
 
 def send_camera_frames(websocket):
-    global camera_running
+    global camera_running, loop
     container = av.open("/dev/video1", format="v4l2")
     frame_counter = 0
     
@@ -50,8 +51,10 @@ def send_camera_frames(websocket):
         if frame_counter % 6 == 0:
             img_rgb = frame.to_rgb().to_ndarray()
             img_bytes = base64.b64encode(img_rgb.tobytes()).decode('utf-8')
-            
-            asyncio.run(websocket.send(json.dumps({"image": img_bytes})))
+
+            # Wysyłanie obrazu w głównym event loopie
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
         
         frame_counter += 1
     
@@ -71,13 +74,14 @@ def stop_camera_thread():
         camera_thread.join()
 
 async def listen():
-    global local_settings
+    global local_settings, loop
     local_settings = load_local_settings()
 
     uri = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
 
     async with websockets.connect(uri) as websocket:
         print("Połączono z serwerem WebSocket (Orange Pi)")
+        loop = asyncio.get_running_loop()  # Pobieramy event loop
 
         try:
             while True:
@@ -131,7 +135,7 @@ def handle_motor_command(command):
         print(f"Nieznana komenda: {command}")
         return
     
-    to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
+    to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\\n"
     ser.write(to_send.encode('utf-8'))
     print(f"Wysłano do Arduino: {to_send}")
 
