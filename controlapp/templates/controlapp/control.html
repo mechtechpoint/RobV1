@@ -12,6 +12,17 @@
         <button class="motor-btn" onclick="sendCommand('stop')">STOP</button>
     </div>
 
+    <div class="button-container">
+        <!-- NOWE: przyciski do kamery -->
+        <button class="camera-btn" onclick="sendCommand('camera_on')">Camera ON</button>
+        <button class="camera-btn" onclick="sendCommand('camera_off')">Camera OFF</button>
+    </div>
+    
+    <!-- Miejsce na wyświetlanie obrazu z kamery -->
+    <div>
+        <img id="cameraFeed" width="640" height="480" style="border: 1px solid black;"/>
+    </div>
+
     <div class="logout-container">
         <form method="post" action="{% url 'logout' %}" style="display: inline;">
             {% csrf_token %}
@@ -25,23 +36,28 @@
         </a>
     </div>
 
-    <script>
-        // Zmienna z adresem WebSocket (dopasuj w razie potrzeby)
-        let socket = new WebSocket("ws://57.128.201.199:8005/ws/control/");
 
+    <script>
+        // Adres WebSocket (taki sam, jak poprzednio)
+        let socket = new WebSocket("ws://57.128.201.199:8005/ws/control/");
+    
         socket.onopen = function() {
             console.log("Połączono z serwerem WebSocket (przeglądarka)");
         };
-
+    
         socket.onmessage = function(event) {
             let data = JSON.parse(event.data);
-            console.log("Otrzymano:", data.command);
-        };
 
+            if (data.image) {
+                let img = document.getElementById("cameraFeed");
+                img.src = "data:image/jpeg;base64," + data.image;
+            }
+        };
+    
         socket.onclose = function(e) {
             console.log("Połączenie WebSocket zamknięte", e);
         };
-
+    
         function sendCommand(command) {
             socket.send(JSON.stringify({"command": command}));
         }
