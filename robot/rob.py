@@ -52,8 +52,7 @@ def send_camera_frames(websocket):
         if not camera_running:
             break
         
-        if frame_counter % 3 == 0:
-            frame_counter = 0
+        if frame_counter % 6 == 0:
             img_rgb = frame.to_rgb().to_ndarray()
             pil_image = Image.fromarray(img_rgb)
             img_io = io.BytesIO()
@@ -64,8 +63,6 @@ def send_camera_frames(websocket):
                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
         
         frame_counter += 1
-        
-
     
     container.close()
 
@@ -104,7 +101,15 @@ async def listen():
                 # Jeśli serwer wysłał aktualizację ustawień
                 if data.get("type") == "settings_update":
                     print("Otrzymano aktualizację ustawień, ponowne wczytanie...")
-                    local_settings = load_local_settings()
+                    new_settings = load_local_settings()
+                    
+                    # Sprawdzamy, czy ustawienia rzeczywiście się zmieniły
+                    if new_settings != local_settings:
+                        local_settings = new_settings
+                        print(f"Nowe ustawienia załadowane: {local_settings}")
+                    else:
+                        print("Ustawienia nie uległy zmianie, pomijam wczytanie.")
+
                     continue
 
                 command = data.get("command", "")
@@ -118,7 +123,6 @@ async def listen():
                 elif command in ["go", "back", "left", "right", "stop"]:
                     handle_motor_command(command)
                 else:
-                    # Ignorujemy nieznane komendy zamiast ich wypisywać
                     continue
         except websockets.exceptions.ConnectionClosed as e:
             print(f"WebSocket zamknięty: {e}")
@@ -126,7 +130,6 @@ async def listen():
 def handle_motor_command(command):
     """ Pobiera NAJNOWSZE ustawienia przed wysłaniem do Arduino """
     global local_settings
-    local_settings = load_local_settings()  # Dynamicznie wczytujemy ustawienia
 
     st_go = local_settings.get("step_time_go", 250)
     st_back = local_settings.get("step_time_back", 250)
