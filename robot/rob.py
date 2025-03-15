@@ -95,22 +95,19 @@ async def listen():
             while True:
                 message = await websocket.recv()
                 data = json.loads(message)
-                msg_type = data.get("type")
-
-                if msg_type == "settings_update":
-                    new_settings = data.get("settings_data", {})
-                    save_local_settings(new_settings)
-                    local_settings = new_settings
+                command = data.get("command", "")
+                
+                if command == "camera_on":
+                    print("Uruchamiam kamerę...")
+                    start_camera_thread(websocket)
+                elif command == "camera_off":
+                    print("Wyłączam kamerę...")
+                    stop_camera_thread(websocket)
+                elif command in ["go", "back", "left", "right", "stop"]:
+                    handle_motor_command(command)
                 else:
-                    command = data.get("command", "")
-                    if command == "camera_on":
-                        print("Uruchamiam kamerę...")
-                        start_camera_thread(websocket)
-                    elif command == "camera_off":
-                        print("Wyłączam kamerę...")
-                        stop_camera_thread(websocket)
-                    else:
-                        handle_motor_command(command)
+                    # Ignorujemy nieznane komendy zamiast ich wypisywać
+                    continue
         except websockets.exceptions.ConnectionClosed as e:
             print(f"WebSocket zamknięty: {e}")
 
@@ -137,9 +134,6 @@ def handle_motor_command(command):
         speed1, speed2 = st_turn * calib_left, st_turn * calib_right
     elif command == "stop":
         direction1, speed1, direction2, speed2 = 0, 0, 0, 0
-    else:
-        print(f"Nieznana komenda: {command}")
-        return
     
     to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
     ser.write(to_send.encode('utf-8'))
