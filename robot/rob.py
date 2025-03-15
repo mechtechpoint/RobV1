@@ -101,7 +101,7 @@ async def listen():
                 # Jeśli serwer wysłał aktualizację ustawień
                 if data.get("type") == "settings_update":
                     print("Otrzymano nowe ustawienia, zapisuję i ładuję...")
-                    update_local_settings(data["settings"])  # Zapisz i odśwież globalną zmienną
+                    update_local_settings(data["settings_data"])  # Zapisz i odśwież globalną zmienną
                     print(f"Nowe ustawienia: {local_settings}")
                     continue
 
