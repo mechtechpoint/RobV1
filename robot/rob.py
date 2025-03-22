@@ -97,28 +97,7 @@ def send_two_camera_frames(websocket):
         container_turret.close()
     except Exception as e:
         print(f"Błąd w send_two_camera_frames: {e}")
-# def send_camera_frames(websocket):
-#     global camera_running, loop
-#     container = av.open("/dev/video3", format="v4l2")
-#     frame_counter = 0
-    
-#     for frame in container.decode(video=0):
-#         if not camera_running:
-#             break
-        
-#         if frame_counter % 6 == 0:
-#             img_rgb = frame.to_rgb().to_ndarray()
-#             pil_image = Image.fromarray(img_rgb)
-#             img_io = io.BytesIO()
-#             pil_image.save(img_io, format="JPEG", quality=50)
-#             img_bytes = base64.b64encode(img_io.getvalue()).decode('utf-8')
-            
-#             if loop and loop.is_running():
-#                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
-        
-#         frame_counter += 1
-    
-#     container.close()
+
 
 def start_camera_thread(websocket):
     global camera_thread, camera_running
@@ -127,15 +106,6 @@ def start_camera_thread(websocket):
         camera_thread = threading.Thread(target=send_two_camera_frames, args=(websocket,))
         camera_thread.start()
 
-# def stop_camera_thread(websocket):
-#     global camera_running
-#     camera_running = False
-#     if camera_thread:
-#         camera_thread.join()
-    
-#     # Wysłanie pustego obrazu po wyłączeniu kamery
-#     if loop and loop.is_running():
-#         asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": ""})), loop)
 def stop_camera_thread(websocket):
     global camera_running
     camera_running = False
@@ -153,7 +123,7 @@ def stop_camera_thread(websocket):
 
 async def listen():
     global local_settings, loop
-    local_settings = load_local_settings()  # Pierwsze wczytanie ustawień
+    local_settings = load_local_settings()
 
     uri = "ws://57.128.201.199:8005/ws/control/?token=MOJ_SEKRETNY_TOKEN_123"
 
@@ -165,16 +135,15 @@ async def listen():
             while True:
                 message = await websocket.recv()
                 data = json.loads(message)
-                
-                # Jeśli serwer wysłał aktualizację ustawień
+
                 if data.get("type") == "settings_update":
                     print("Otrzymano nowe ustawienia, zapisuję i ładuję...")
-                    update_local_settings(data["settings_data"])  # Zapisz i odśwież globalną zmienną
+                    update_local_settings(data["settings_data"])
                     print(f"Nowe ustawienia: {local_settings}")
                     continue
 
                 command = data.get("command", "")
-                
+
                 if command == "camera_on":
                     print("Uruchamiam kamerę...")
                     start_camera_thread(websocket)
@@ -182,9 +151,14 @@ async def listen():
                     print("Wyłączam kamerę...")
                     stop_camera_thread(websocket)
                 elif command in ["go", "back", "left", "right", "stop"]:
-                    handle_motor_command(command)  # Używa zaktualizowanego `local_settings`
+                    handle_motor_command(command)
+                elif command == "turret_left":
+                    print("Turret LEFT – odebrano komendę turret_left (Orange Pi)")
+                elif command == "turret_right":
+                    print("Turret RIGHT – odebrano komendę turret_right (Orange Pi)")
                 else:
                     continue
+
         except websockets.exceptions.ConnectionClosed as e:
             print(f"WebSocket zamknięty: {e}")
 
