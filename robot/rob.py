@@ -43,45 +43,113 @@ def save_local_settings(data):
     with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
-def send_camera_frames(websocket):
+def send_two_camera_frames(websocket):
+    """
+    Funkcja, która jednocześnie pobiera klatki z dwóch urządzeń (/dev/video1 i /dev/video3)
+    i wysyła je w jednym komunikacie JSON.
+    """
     global camera_running, loop
-    container = av.open("/dev/video1", format="v4l2")
-    frame_counter = 0
+    try:
+        container_front = av.open("/dev/video1", format="v4l2")
+        container_turret = av.open("/dev/video3", format="v4l2")
+
+        front_frames = container_front.decode(video=0)
+        turret_frames = container_turret.decode(video=0)
+
+        frame_counter = 0
+
+        # Używamy zip, żeby jednocześnie czytać kolejne klatki z obu kamer.
+        for front_frame, turret_frame in zip(front_frames, turret_frames):
+            if not camera_running:
+                break
+
+            # Co ileś klatek wysyłamy, żeby nie przeciążać łącza (tak jak poprzednio co 6)
+            if frame_counter % 6 == 0:
+                # FRONT
+                img_rgb_front = front_frame.to_rgb().to_ndarray()
+                pil_front = Image.fromarray(img_rgb_front)
+                img_io_front = io.BytesIO()
+                pil_front.save(img_io_front, format="JPEG", quality=50)
+                img_bytes_front = base64.b64encode(img_io_front.getvalue()).decode('utf-8')
+
+                # TURRET
+                img_rgb_turret = turret_frame.to_rgb().to_ndarray()
+                pil_turret = Image.fromarray(img_rgb_turret)
+                img_io_turret = io.BytesIO()
+                pil_turret.save(img_io_turret, format="JPEG", quality=50)
+                img_bytes_turret = base64.b64encode(img_io_turret.getvalue()).decode('utf-8')
+
+                # Wysyłamy 2 obrazy w JEDNYM komunikacie
+                data_to_send = {
+                    "image_front": img_bytes_front,
+                    "image_turret": img_bytes_turret
+                }
+
+                if loop and loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        websocket.send(json.dumps(data_to_send)),
+                        loop
+                    )
+
+            frame_counter += 1
+
+        container_front.close()
+        container_turret.close()
+    except Exception as e:
+        print(f"Błąd w send_two_camera_frames: {e}")
+# def send_camera_frames(websocket):
+#     global camera_running, loop
+#     container = av.open("/dev/video3", format="v4l2")
+#     frame_counter = 0
     
-    for frame in container.decode(video=0):
-        if not camera_running:
-            break
+#     for frame in container.decode(video=0):
+#         if not camera_running:
+#             break
         
-        if frame_counter % 6 == 0:
-            img_rgb = frame.to_rgb().to_ndarray()
-            pil_image = Image.fromarray(img_rgb)
-            img_io = io.BytesIO()
-            pil_image.save(img_io, format="JPEG", quality=50)
-            img_bytes = base64.b64encode(img_io.getvalue()).decode('utf-8')
+#         if frame_counter % 6 == 0:
+#             img_rgb = frame.to_rgb().to_ndarray()
+#             pil_image = Image.fromarray(img_rgb)
+#             img_io = io.BytesIO()
+#             pil_image.save(img_io, format="JPEG", quality=50)
+#             img_bytes = base64.b64encode(img_io.getvalue()).decode('utf-8')
             
-            if loop and loop.is_running():
-                asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
+#             if loop and loop.is_running():
+#                 asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": img_bytes})), loop)
         
-        frame_counter += 1
+#         frame_counter += 1
     
-    container.close()
+#     container.close()
 
 def start_camera_thread(websocket):
     global camera_thread, camera_running
     if camera_thread is None or not camera_thread.is_alive():
         camera_running = True
-        camera_thread = threading.Thread(target=send_camera_frames, args=(websocket,))
+        camera_thread = threading.Thread(target=send_two_camera_frames, args=(websocket,))
         camera_thread.start()
 
+# def stop_camera_thread(websocket):
+#     global camera_running
+#     camera_running = False
+#     if camera_thread:
+#         camera_thread.join()
+    
+#     # Wysłanie pustego obrazu po wyłączeniu kamery
+#     if loop and loop.is_running():
+#         asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": ""})), loop)
 def stop_camera_thread(websocket):
     global camera_running
     camera_running = False
-    if camera_thread:
+    if camera_thread and camera_thread.is_alive():
         camera_thread.join()
-    
-    # Wysłanie pustego obrazu po wyłączeniu kamery
+
+    # Wysłanie pustych obrazów po wyłączeniu kamer (żeby w Django wyczyścić <img>)
     if loop and loop.is_running():
-        asyncio.run_coroutine_threadsafe(websocket.send(json.dumps({"image": ""})), loop)
+        empty_msg = {"image_front": "", "image_turret": ""}
+        asyncio.run_coroutine_threadsafe(
+            websocket.send(json.dumps(empty_msg)),
+            loop
+        )
+
 
 async def listen():
     global local_settings, loop
