@@ -156,6 +156,8 @@ async def listen():
                     print("Turret LEFT – odebrano komendę turret_left (Orange Pi)")
                 elif command == "turret_right":
                     print("Turret RIGHT – odebrano komendę turret_right (Orange Pi)")
+                elif command == "turret_stop":
+                    print("Turret RIGHT – odebrano komendę turret_stop (Orange Pi)")
                 else:
                     continue
 
