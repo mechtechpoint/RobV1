@@ -37,12 +37,13 @@ class MotorConsumer(AsyncWebsocketConsumer):
                     }
                 )
             
-            if "image" in data:
+            if "image_front" in data and "image_turret" in data:
                 await self.channel_layer.group_send(
                     "motor_control",
                     {
                         "type": "camera_frame",
-                        "image": data["image"]
+                        "image_front": data["image_front"],
+                        "image_turret": data["image_turret"]
                     }
                 )
     
@@ -55,8 +56,15 @@ class MotorConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({"command": command}))
     
     async def camera_frame(self, event):
-        image_data = event["image"]
-        await self.send(text_data=json.dumps({"image": image_data}))
+        """
+        Rozsyła do klienta/klientów oba obrazy jednocześnie.
+        """
+        image_front = event["image_front"]
+        image_turret = event["image_turret"]
+        await self.send(text_data=json.dumps({
+            "image_front": image_front,
+            "image_turret": image_turret
+        }))
     
     async def settings_update(self, event):
         new_settings = event["settings_data"]

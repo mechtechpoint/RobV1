@@ -19,12 +19,20 @@
     </div>
     
     <!-- Miejsce na wyświetlanie obrazu z kamery -->
-    <div style="display: flex; justify-content: center; align-items: center; height: 300px;">
-        <div id="cameraContainer" style="width: 320px; height: 240px; overflow: hidden; border: 1px solid black;">
-            <img id="cameraFeed" style="width: 100%; height: 100%; object-fit: contain;" />
+    <div style="display: flex; gap: 10px; justify-content: center; align-items: center;">
+        <div>
+            <p>Front</p>
+            <div id="cameraContainerFront" style="width: 320px; height: 240px; overflow: hidden; border: 1px solid black;">
+                <img id="cameraFeedFront" style="width: 100%; height: 100%; object-fit: contain;" />
+            </div>
+        </div>
+        <div>
+            <p>Turret</p>
+            <div id="cameraContainerTurret" style="width: 320px; height: 240px; overflow: hidden; border: 1px solid black;">
+                <img id="cameraFeedTurret" style="width: 100%; height: 100%; object-fit: contain;" />
+            </div>
         </div>
     </div>
-
     <div class="logout-container">
         <form method="post" action="{% url 'logout' %}" style="display: inline;">
             {% csrf_token %}
@@ -48,13 +56,19 @@
     
         socket.onmessage = function(event) {
             let data = JSON.parse(event.data);
-            let img = document.getElementById("cameraFeed");
+            
+            let imgFront = document.getElementById("cameraFeedFront");
+            let imgTurret = document.getElementById("cameraFeedTurret");
     
-            if (data.image) {
-                if (data.image === "") {
-                    img.src = "";  // Oczyszczanie obrazu po camera_off
+            // Jeśli przyszły dwa obrazy naraz:
+            if (data.image_front !== undefined && data.image_turret !== undefined) {
+                // Jeżeli puste, to czyścimy
+                if (data.image_front === "" && data.image_turret === "") {
+                    imgFront.src = "";
+                    imgTurret.src = "";
                 } else {
-                    img.src = "data:image/jpeg;base64," + data.image;
+                    imgFront.src = "data:image/jpeg;base64," + data.image_front;
+                    imgTurret.src = "data:image/jpeg;base64," + data.image_turret;
                 }
             }
         };
@@ -64,11 +78,15 @@
         };
     
         function sendCommand(command) {
+            // Jak poprzednio
             if (command === "camera_off") {
-                let img = document.getElementById("cameraFeed");
-                img.src = ""; // Od razu ukrywamy obraz
+                // Od razu wyczyść
+                let imgFront = document.getElementById("cameraFeedFront");
+                let imgTurret = document.getElementById("cameraFeedTurret");
+                imgFront.src = "";
+                imgTurret.src = "";
     
-                // Ustawienie opóźnionego odświeżenia strony po 0.5 sekundy
+                // Ewentualne odświeżenie strony
                 setTimeout(() => {
                     location.reload();
                 }, 1500);
