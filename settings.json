@@ -1,9 +1,7 @@
 {
-    "step_time_go": 100.0,
+    "step_time_go": 240.0,
     "step_time_back": 250.0,
     "step_time_turn": 400.0,
     "engine_left_calib": 1.0,
-    "engine_right_calib": 1.0,
-    "step_time_turret": 500.0, 
-    "steps_turret": 200
+    "engine_right_calib": 1.0
 }

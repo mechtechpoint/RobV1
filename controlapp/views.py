@@ -45,6 +45,8 @@ def settings_view(request):
         step_time_turn = float(request.POST.get('step_time_turn', '250'))
         engine_left_calib = float(request.POST.get('engine_left_calib', '1.0'))
         engine_right_calib = float(request.POST.get('engine_right_calib', '1.0'))
+        step_time_turret = float(request.POST.get('step_time_turret', '500'))
+        steps_turret = int(request.POST.get('steps_turret', '200'))
 
         # 2) Zaktualizuj plik settings.json na serwerze
         new_data = {
@@ -52,7 +54,9 @@ def settings_view(request):
             "step_time_back": step_time_back,
             "step_time_turn": step_time_turn,
             "engine_left_calib": engine_left_calib,
-            "engine_right_calib": engine_right_calib
+            "engine_right_calib": engine_right_calib,
+            "step_time_turret": step_time_turret,
+            "steps_turret": steps_turret
         }
         with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
             json.dump(new_data, f, ensure_ascii=False, indent=4)
@@ -82,7 +86,9 @@ def settings_view(request):
                 "step_time_back": 250,
                 "step_time_turn": 250,
                 "engine_left_calib": 1.0,
-                "engine_right_calib": 1.0
+                "engine_right_calib": 1.0,
+                "step_time_turret": 500.0,
+                "steps_turret": 200
             }
 
         return render(request, "controlapp/settings.html", {"settings_data": current_data})
