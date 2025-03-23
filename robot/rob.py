@@ -29,7 +29,9 @@ def load_local_settings():
             "step_time_back": 250,
             "step_time_turn": 250,
             "engine_left_calib": 1.0,
-            "engine_right_calib": 1.0
+            "engine_right_calib": 1.0,
+            "step_time_turret": 500.0,
+            "steps_turret": 200
         }
         with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=4)
@@ -154,10 +156,10 @@ async def listen():
                     handle_motor_command(command)
                 elif command == "turret_left":
                     print("Turret LEFT – odebrano komendę turret_left (Orange Pi)")
+                    handle_turret_command("left")
                 elif command == "turret_right":
                     print("Turret RIGHT – odebrano komendę turret_right (Orange Pi)")
-                elif command == "turret_stop":
-                    print("Turret RIGHT – odebrano komendę turret_stop (Orange Pi)")
+                    handle_turret_command("right")
                 else:
                     continue
 
@@ -200,6 +202,15 @@ def handle_motor_command(command):
     to_send = f"{direction1},{int(speed1)},{direction2},{int(speed2)}\n"
     ser.write(to_send.encode('utf-8'))
     print(f"Wysłano do Arduino: {to_send}")
+
+def handle_turret_command(direction):
+
+    global local_settings
+    step_time_turret = local_settings.get("step_time_turret", 500.0)  # w µs
+    steps_turret = local_settings.get("steps_turret", 200)
+    cmd = f"sudo python3 motor_control.py {direction} {step_time_turret} {steps_turret}"
+    print(f"Wywołanie wieżyczki: {cmd}")
+    os.system(cmd)
 
 if __name__ == "__main__":
     asyncio.run(listen())
