@@ -9,6 +9,8 @@ import base64
 import numpy as np
 import io
 from PIL import Image
+import subprocess
+import time
 
 arduino_port = "/dev/ttyUSB0"
 baud_rate = 9600
@@ -20,6 +22,75 @@ local_settings = {}
 camera_thread = None
 camera_running = False
 loop = None  # Przechowuje event loop dla WebSocket
+
+
+def find_cameras():
+    """
+    Zwraca słownik o strukturze:
+    {
+      "Integrated Camera: Integrated C (usb-5311000.usb-1.1)": ["/dev/video3", "/dev/video4"],
+      "Integrated Camera: Integrated C (usb-xhci-hcd.1.auto-1.1)": ["/dev/video1", "/dev/video2"],
+      ...
+    }
+    """
+    devices = {}
+    output = subprocess.check_output(["v4l2-ctl", "--list-devices"]).decode("utf-8", errors="replace")
+    lines = [line.strip() for line in output.split("\n") if line.strip()]
+    
+    current_title = None
+    for line in lines:
+        if line.startswith("/dev/video"):
+            # to jest linia z ścieżką urządzenia np. "/dev/video1"
+            if current_title is not None:
+                devices[current_title].append(line)
+        else:
+            # to jest nazwa "nagłówkowa", np. "Integrated Camera: Integrated C (usb-5311000.usb-1.1)"
+            current_title = line
+            devices[current_title] = []
+    
+    return devices
+
+def get_my_cameras():
+    """
+    Zwraca krotkę (front_dev, turret_dev), próbując otworzyć kolejne /dev/videoX
+    skojarzone z front_substring i turret_substring.
+    """
+    all_cameras = find_cameras()
+    
+    turret_substring = "usb-5311000.usb-1.1"      # dopasuj do nazwy z `v4l2-ctl --list-devices`
+    front_substring  = "usb-xhci-hcd.1.auto-1.1" # dopasuj do nazwy z `v4l2-ctl --list-devices`
+    
+    turret_dev = None
+    front_dev = None
+
+    for camera_title, dev_paths in all_cameras.items():
+        # Jeżeli ta kamera w tytule ma substring "turret"
+        if turret_substring in camera_title:
+            for path in dev_paths:
+                try:
+                    test = av.open(path, format="v4l2")
+                    test.close()
+                    # Jeśli udało się otworzyć, to bierzemy tę ścieżkę i kończymy
+                    turret_dev = path
+                    break
+                except Exception as e:
+                    print(f"Nie udało się otworzyć turret_dev {path}: {e}")
+        
+        # Jeżeli ta kamera w tytule ma substring "front"
+        elif front_substring in camera_title:
+            for path in dev_paths:
+                try:
+                    test = av.open(path, format="v4l2")
+                    test.close()
+                    # Jeśli się udało, wybieramy tę ścieżkę
+                    front_dev = path
+                    break
+                except Exception as e:
+                    print(f"Nie udało się otworzyć front_dev {path}: {e}")
+
+    return front_dev, turret_dev
+
+
 
 def load_local_settings():
     """ Wczytuje plik settings.json za każdym razem, gdy jest potrzebny """
@@ -45,60 +116,81 @@ def save_local_settings(data):
     with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
+def convert_frame_to_jpeg_base64(frame):
+    """
+    Konwertuje klatkę z PyAV (av.VideoFrame) do base64 w formacie JPEG.
+    """
+    # Krok 1: zamieniamy ramkę z PyAV na tablicę w formacie RGB
+    img_rgb = frame.to_rgb().to_ndarray()
+
+    # Krok 2: tworzymy obraz PIL z tablicy
+    pil_img = Image.fromarray(img_rgb)
+
+    # Krok 3: kompresja do JPEG w pamięci
+    buffer = io.BytesIO()
+    pil_img.save(buffer, format="JPEG", quality=50)  # quality możesz dowolnie zmienić
+
+    # Krok 4: konwersja bufora do base64
+    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return base64_str
+
+
+
 def send_two_camera_frames(websocket):
-    """
-    Funkcja, która jednocześnie pobiera klatki z dwóch urządzeń (/dev/video1 i /dev/video3)
-    i wysyła je w jednym komunikacie JSON.
-    """
     global camera_running, loop
     try:
-        container_front = av.open("/dev/video1", format="v4l2")
-        container_turret = av.open("/dev/video3", format="v4l2")
+        front_dev, turret_dev = get_my_cameras()
+        container_front = av.open(f"{front_dev}", format="v4l2")
+        container_turret = av.open(f"{turret_dev}", format="v4l2")
 
-        front_frames = container_front.decode(video=0)
-        turret_frames = container_turret.decode(video=0)
+        front_stream = container_front.streams.video[0]
+        turret_stream = container_turret.streams.video[0]
 
-        frame_counter = 0
 
-        # Używamy zip, żeby jednocześnie czytać kolejne klatki z obu kamer.
-        for front_frame, turret_frame in zip(front_frames, turret_frames):
-            if not camera_running:
-                break
+        while camera_running:
+            # Pobierz maksymalnie 1 klatkę z front i 1 z turret (odrzuć resztę)
+            front_packet = next(container_front.demux(front_stream), None)
+            turret_packet = next(container_turret.demux(turret_stream), None)
+            
+            if front_packet is None or front_packet.is_corrupt:
+                continue
+            if turret_packet is None or turret_packet.is_corrupt:
+                continue
 
-            # Co ileś klatek wysyłamy, żeby nie przeciążać łącza (tak jak poprzednio co 6)
-            if frame_counter % 6 == 0:
-                # FRONT
-                img_rgb_front = front_frame.to_rgb().to_ndarray()
-                pil_front = Image.fromarray(img_rgb_front)
-                img_io_front = io.BytesIO()
-                pil_front.save(img_io_front, format="JPEG", quality=50)
-                img_bytes_front = base64.b64encode(img_io_front.getvalue()).decode('utf-8')
+            try:
+                front_frames = front_packet.decode()
+                turret_frames = turret_packet.decode()
+            except:
+                continue
 
-                # TURRET
-                img_rgb_turret = turret_frame.to_rgb().to_ndarray()
-                pil_turret = Image.fromarray(img_rgb_turret)
-                img_io_turret = io.BytesIO()
-                pil_turret.save(img_io_turret, format="JPEG", quality=50)
-                img_bytes_turret = base64.b64encode(img_io_turret.getvalue()).decode('utf-8')
+            if not front_frames or not turret_frames:
+                continue
 
-                # Wysyłamy 2 obrazy w JEDNYM komunikacie
-                data_to_send = {
-                    "image_front": img_bytes_front,
-                    "image_turret": img_bytes_turret
-                }
+            # Bierz tylko ostatnią klatkę z dekodowania (gdyby było kilka)
+            front_frame = front_frames[-1]
+            turret_frame = turret_frames[-1]
 
-                if loop and loop.is_running():
-                    asyncio.run_coroutine_threadsafe(
-                        websocket.send(json.dumps(data_to_send)),
-                        loop
-                    )
+            # Konwersja -> np. co 3 klatkę wysyłamy
+            # (albo w ogóle bez liczenia, bo i tak zredukowaliśmy fps do 10)
+            img_front_b64 = convert_frame_to_jpeg_base64(front_frame)
+            img_turret_b64 = convert_frame_to_jpeg_base64(turret_frame)
 
-            frame_counter += 1
+            # Wysyłamy asynchronicznie
+            data_to_send = {
+                "image_front": img_front_b64,
+                "image_turret": img_turret_b64
+            }
+            if loop and loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    websocket.send(json.dumps(data_to_send)),
+                    loop
+                )
 
         container_front.close()
         container_turret.close()
     except Exception as e:
         print(f"Błąd w send_two_camera_frames: {e}")
+
 
 
 def start_camera_thread(websocket):
@@ -121,6 +213,8 @@ def stop_camera_thread(websocket):
             websocket.send(json.dumps(empty_msg)),
             loop
         )
+    
+    time.sleep(0.5)
 
 
 async def listen():
