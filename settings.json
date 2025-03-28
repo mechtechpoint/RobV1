@@ -3,5 +3,7 @@
     "step_time_back": 250.0,
     "step_time_turn": 400.0,
     "engine_left_calib": 1.0,
-    "engine_right_calib": 1.0
+    "engine_right_calib": 1.0,
+    "step_time_turret": 1000.0,
+    "steps_turret": 50
 }
