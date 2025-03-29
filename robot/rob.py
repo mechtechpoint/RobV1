@@ -102,7 +102,9 @@ def load_local_settings():
             "engine_left_calib": 1.0,
             "engine_right_calib": 1.0,
             "step_time_turret": 500.0,
-            "steps_turret": 200
+            "steps_turret": 200,
+            "step_time_turret2": 500.0,
+            "steps_turret2": 200
         }
         with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=4)
@@ -254,6 +256,12 @@ async def listen():
                 elif command == "turret_right":
                     print("Turret RIGHT – odebrano komendę turret_right (Orange Pi)")
                     handle_turret_command("right")
+                elif command == "turret_up":
+                    print("Turret up – odebrano komendę turret_up (Orange Pi)")
+                    handle_turret_command2("left")
+                elif command == "turret_down":
+                    print("Turret down – odebrano komendę turret_down (Orange Pi)")
+                    handle_turret_command2("right")
                 else:
                     continue
 
@@ -304,6 +312,15 @@ def handle_turret_command(direction):
     steps_turret = local_settings.get("steps_turret", 200)
     cmd = f"sudo python3 motor_control.py {direction} {step_time_turret} {steps_turret}"
     print(f"Wywołanie wieżyczki: {cmd}")
+    os.system(cmd)
+
+def handle_turret_command2(direction):
+
+    global local_settings
+    step_time_turret2 = local_settings.get("step_time_turret2", 500.0)  # w µs
+    steps_turret2 = local_settings.get("steps_turret2", 200)
+    cmd = f"sudo python3 motor_control2.py {direction} {step_time_turret2} {steps_turret2}"
+    print(f"Wywołanie wieżyczki2: {cmd}")
     os.system(cmd)
 
 if __name__ == "__main__":
