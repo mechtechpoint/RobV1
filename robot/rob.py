@@ -40,15 +40,14 @@ def find_cameras():
     current_title = None
     for line in lines:
         if line.startswith("/dev/video"):
-            # to jest linia z ścieżką urządzenia np. "/dev/video1"
             if current_title is not None:
                 devices[current_title].append(line)
         else:
-            # to jest nazwa "nagłówkowa", np. "Integrated Camera: Integrated C (usb-5311000.usb-1.1)"
             current_title = line
             devices[current_title] = []
     
     return devices
+
 
 def get_my_cameras():
     """
@@ -64,25 +63,21 @@ def get_my_cameras():
     front_dev = None
 
     for camera_title, dev_paths in all_cameras.items():
-        # Jeżeli ta kamera w tytule ma substring "turret"
         if turret_substring in camera_title:
             for path in dev_paths:
                 try:
                     test = av.open(path, format="v4l2")
                     test.close()
-                    # Jeśli udało się otworzyć, to bierzemy tę ścieżkę i kończymy
                     turret_dev = path
                     break
                 except Exception as e:
                     print(f"Nie udało się otworzyć turret_dev {path}: {e}")
         
-        # Jeżeli ta kamera w tytule ma substring "front"
         elif front_substring in camera_title:
             for path in dev_paths:
                 try:
                     test = av.open(path, format="v4l2")
                     test.close()
-                    # Jeśli się udało, wybieramy tę ścieżkę
                     front_dev = path
                     break
                 except Exception as e:
@@ -120,43 +115,66 @@ def save_local_settings(data):
 
 def convert_frame_to_jpeg_base64(frame):
     """
-    Konwertuje klatkę z PyAV (av.VideoFrame) do base64 w formacie JPEG.
+    Konwertuje klatkę z PyAV (av.VideoFrame) do base64:
+      1) wymusza konwersję do RGB,
+      2) zmniejsza rozdzielczość 2×,
+      3) konwertuje do odcieni szarości (grayscale),
+      4) kompresuje do JPEG (base64).
     """
-    # Krok 1: zamieniamy ramkę z PyAV na tablicę w formacie RGB
+    # 1. Konwersja do RGB ndarray
     img_rgb = frame.to_rgb().to_ndarray()
-
-    # Krok 2: tworzymy obraz PIL z tablicy
+    
+    # 2. Do PIL
     pil_img = Image.fromarray(img_rgb)
+    
+    # Zmniejsz rozdzielczość 2×
+    w, h = pil_img.size
+    pil_img = pil_img.resize((w // 2, h // 2), Image.LANCZOS)
+    
+    # 3. Konwersja do odcieni szarości
+    pil_img = pil_img.convert("L")
 
-    # Krok 3: kompresja do JPEG w pamięci
+    # 4. Kompresja do JPEG
     buffer = io.BytesIO()
-    pil_img.save(buffer, format="JPEG", quality=50)  # quality możesz dowolnie zmienić
-
-    # Krok 4: konwersja bufora do base64
+    pil_img.save(buffer, format="JPEG", quality=40)  # Możesz zmniejszyć jeszcze bardziej quality
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return base64_str
-
 
 
 def send_two_camera_frames(websocket):
     global camera_running, loop
     try:
+        # Pobieramy ścieżki do dwóch kamer
         front_dev, turret_dev = get_my_cameras()
-        container_front = av.open(f"{front_dev}", format="v4l2")
-        container_turret = av.open(f"{turret_dev}", format="v4l2")
 
+        # Wymuszamy 640x480 MJPG na każdej kamerze przez v4l2-ctl
+        # (Możesz pominąć, jeśli już masz kamery domyślnie w 640x480)
+        subprocess.run(["v4l2-ctl", 
+                        "--set-fmt-video=width=640,height=480,pixelformat=MJPG", 
+                        "-d", front_dev])
+        subprocess.run(["v4l2-ctl", 
+                        "--set-fmt-video=width=640,height=480,pixelformat=MJPG", 
+                        "-d", turret_dev])
+        
+        # Otwieramy strumienie PyAV
+        container_front = av.open(front_dev, format="v4l2")
+        container_turret = av.open(turret_dev, format="v4l2")
+        
         front_stream = container_front.streams.video[0]
         turret_stream = container_turret.streams.video[0]
 
+        frame_count = 0
 
         while camera_running:
-            # Pobierz maksymalnie 1 klatkę z front i 1 z turret (odrzuć resztę)
+            frame_count += 1
+            
+            # Pobierz *tylko* jedną paczkę z front i jedną z turret
             front_packet = next(container_front.demux(front_stream), None)
             turret_packet = next(container_turret.demux(turret_stream), None)
             
-            if front_packet is None or front_packet.is_corrupt:
+            if not front_packet or front_packet.is_corrupt:
                 continue
-            if turret_packet is None or turret_packet.is_corrupt:
+            if not turret_packet or turret_packet.is_corrupt:
                 continue
 
             try:
@@ -168,16 +186,19 @@ def send_two_camera_frames(websocket):
             if not front_frames or not turret_frames:
                 continue
 
-            # Bierz tylko ostatnią klatkę z dekodowania (gdyby było kilka)
+            # Bierzemy tylko ostatnią klatkę
             front_frame = front_frames[-1]
             turret_frame = turret_frames[-1]
 
-            # Konwersja -> np. co 3 klatkę wysyłamy
-            # (albo w ogóle bez liczenia, bo i tak zredukowaliśmy fps do 10)
+            # Wysyłamy tylko co 3. klatkę (pozostałe 2/3 odrzucamy)
+            if frame_count % 3 != 0:
+                continue
+
+            # Konwersja do grayscale + zmniejszenie 2× + kodowanie JPEG base64
             img_front_b64 = convert_frame_to_jpeg_base64(front_frame)
             img_turret_b64 = convert_frame_to_jpeg_base64(turret_frame)
 
-            # Wysyłamy asynchronicznie
+            # Wysyłanie asynchroniczne do WebSocket
             data_to_send = {
                 "image_front": img_front_b64,
                 "image_turret": img_turret_b64
@@ -188,11 +209,13 @@ def send_two_camera_frames(websocket):
                     loop
                 )
 
+            # Ewentualnie mały sleep, by nie mielić w pętli maksymalnie:
+            time.sleep(0.01)
+
         container_front.close()
         container_turret.close()
     except Exception as e:
         print(f"Błąd w send_two_camera_frames: {e}")
-
 
 
 def start_camera_thread(websocket):
@@ -202,13 +225,14 @@ def start_camera_thread(websocket):
         camera_thread = threading.Thread(target=send_two_camera_frames, args=(websocket,))
         camera_thread.start()
 
+
 def stop_camera_thread(websocket):
     global camera_running
     camera_running = False
     if camera_thread and camera_thread.is_alive():
         camera_thread.join()
 
-    # Wysłanie pustych obrazów po wyłączeniu kamer (żeby w Django wyczyścić <img>)
+    # Wysłanie pustych obrazów po wyłączeniu (czyścimy <img> w Django)
     if loop and loop.is_running():
         empty_msg = {"image_front": "", "image_turret": ""}
         asyncio.run_coroutine_threadsafe(
