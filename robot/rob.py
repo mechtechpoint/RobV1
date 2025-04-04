@@ -286,6 +286,9 @@ async def listen():
                 elif command == "turret_down":
                     print("Turret down – odebrano komendę turret_down (Orange Pi)")
                     handle_turret_command2("right")
+                elif command == "fire":
+                    handle_fire()
+                    print("fire")
                 else:
                     continue
 
@@ -345,6 +348,13 @@ def handle_turret_command2(direction):
     steps_turret2 = local_settings.get("steps_turret2", 200)
     cmd = f"sudo python3 motor_control2.py {direction} {step_time_turret2} {steps_turret2}"
     print(f"Wywołanie wieżyczki2: {cmd}")
+    os.system(cmd)
+
+def handle_fire():
+
+    global local_settings
+    cmd = f"sudo python3 fire.py"
+    print(f"fire")
     os.system(cmd)
 
 if __name__ == "__main__":
