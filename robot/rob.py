@@ -159,27 +159,44 @@ def convert_turret_frame_to_jpeg_base64(frame, mark_x, mark_y):
     max_x = pil_img.width - 1
     max_y = pil_img.height - 1
 
-    # Rysujemy krzyż (cross) o ramionach długości 3 pikseli w każdą stronę (łącznie 7 px):
-    # - linia pozioma: (mark_x-3 .. mark_x+3, mark_y)
-    # - linia pionowa: (mark_x, mark_y-3 .. mark_y+3)
-
-    # Linia pozioma
+    # ------------------------
+    #   RYSOWANIE BIAŁEGO KRZYŻA
+    # ------------------------
+    # Linia pozioma: (mark_x-3 .. mark_x+3, mark_y)
     for dx in range(-3, 4):  # -3, -2, -1, 0, 1, 2, 3
         xx = mark_x + dx
         if 0 <= xx <= max_x and 0 <= mark_y <= max_y:
-            pil_img.putpixel((xx, mark_y), 255)
+            pil_img.putpixel((xx, mark_y), 255)  # 255 = biały w "L"
 
-    # Linia pionowa
-    for dy in range(-3, 4):  # -3, -2, -1, 0, 1, 2, 3
+    # Linia pionowa: (mark_x, mark_y-3 .. mark_y+3)
+    for dy in range(-3, 4):
         yy = mark_y + dy
         if 0 <= yy <= max_y and 0 <= mark_x <= max_x:
             pil_img.putpixel((mark_x, yy), 255)
+
+    # ------------------------
+    #   DODAWANIE CZARNYCH KROPEK
+    # ------------------------
+    # Funkcja pomocnicza do bezpiecznego ustawiania piksela na czarno (0):
+    def put_black_if_valid(x, y):
+        if 0 <= x <= max_x and 0 <= y <= max_y:
+            pil_img.putpixel((x, y), 0)  # 0 = czarny w "L"
+
+    # 1) Środek krzyża
+    put_black_if_valid(mark_x, mark_y)
+
+    # 2) Końce ramion (lewy, prawy, górny, dolny)
+    put_black_if_valid(mark_x - 3, mark_y)   # lewy
+    put_black_if_valid(mark_x + 3, mark_y)   # prawy
+    put_black_if_valid(mark_x, mark_y - 3)   # góra
+    put_black_if_valid(mark_x, mark_y + 3)   # dół
 
     # 4. Kompresja do JPEG w formie base64
     buffer = io.BytesIO()
     pil_img.save(buffer, format="JPEG", quality=40)
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return base64_str
+    
 def send_two_camera_frames(websocket):
     global camera_running, loop, local_settings
     try:
