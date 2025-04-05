@@ -1,11 +1,13 @@
 {
-    "step_time_go": 250.0,
+    "step_time_go": 200.0,
     "step_time_back": 250.0,
-    "step_time_turn": 400.0,
+    "step_time_turn": 250.0,
     "engine_left_calib": 1.0,
     "engine_right_calib": 1.0,
-    "step_time_turret": 500.0, 
-    "steps_turret": 200,
-    "turret_mark_x": 160,
+    "step_time_turret": 1500.0,
+    "steps_turret": 50,
+    "step_time_turret2": 1500.0,
+    "steps_turret2": 50,
+    "turret_mark_x": 80,
     "turret_mark_y": 120
 }

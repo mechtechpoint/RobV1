@@ -96,10 +96,10 @@ def load_local_settings():
             "step_time_turn": 250,
             "engine_left_calib": 1.0,
             "engine_right_calib": 1.0,
-            "step_time_turret": 500.0,
-            "steps_turret": 200,
-            "step_time_turret2": 500.0,
-            "steps_turret2": 200,
+            "step_time_turret": 1500.0,
+            "steps_turret": 50,
+            "step_time_turret2": 1500.0,
+            "steps_turret2": 50,
             "turret_mark_x": 160,
             "turret_mark_y": 120
         }
@@ -155,31 +155,20 @@ def convert_turret_frame_to_jpeg_base64(frame, mark_x, mark_y):
     
     # 3. Konwersja do odcieni szarości
     pil_img = pil_img.convert("L")
-
-    # RYSOWANIE KROPKI - w skali po zmniejszeniu
-    # Zakładam, że mark_x/mark_y były w oryginalnej skali (640×480).
-    # Dzielimy przez 2:
-    mark_x2 = mark_x
-    mark_y2 = mark_y
-
-    # Można użyć np. putpixel albo ImageDraw
-    # Dla prostego rysowania 5 pikseli (środek + góra, dół, lewo, prawo) wystarczy putpixel.
-    # Sprawdźmy, czy punkt mieści się w obrazie:
-    max_x = pil_img.width - 1
-    max_y = pil_img.height - 1
+    # 4. Rysowanie koła o średnicy ~4 px w punkcie (mark_x, mark_y).
+    draw = ImageDraw.Draw(pil_img)
     
-    coords_to_mark = [
-        (mark_x2, mark_y2),
-        (mark_x2 - 1, mark_y2),
-        (mark_x2 + 1, mark_y2),
-        (mark_x2, mark_y2 - 1),
-        (mark_x2, mark_y2 + 1),
-    ]
-    for (xx, yy) in coords_to_mark:
-        if 0 <= xx <= max_x and 0 <= yy <= max_y:
-            pil_img.putpixel((xx, yy), 255)  # 255 w trybie L = biały
-    
-    # 4. Kompresja do JPEG base64
+    # Zdefiniuj promień r=2 => średnica 4 px.  
+    r = 2
+    left   = mark_x - r
+    top    = mark_y - r
+    right  = mark_x + r
+    bottom = mark_y + r
+
+    # Narysuj białe wypełnione koło:
+    draw.ellipse((left, top, right, bottom), fill=255)
+
+    # 5. Kompresja do JPEG base64
     buffer = io.BytesIO()
     pil_img.save(buffer, format="JPEG", quality=40)
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
