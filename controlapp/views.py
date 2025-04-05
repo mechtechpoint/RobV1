@@ -48,8 +48,8 @@ def settings_view(request):
         step_time_turret = float(request.POST.get('step_time_turret', '1500'))
         steps_turret = int(request.POST.get('steps_turret', '50'))
         step_time_turret2 = float(request.POST.get('step_time_turret2', '1500'))
-        steps_turret2 = int(request.POST.get('steps_turret2', '50')),
-        turret_mark_x = int(request.POST.get('turret_mark_x', '160')),
+        steps_turret2 = int(request.POST.get('steps_turret2', '50'))
+        turret_mark_x = int(request.POST.get('turret_mark_x', '160'))
         turret_mark_y = int(request.POST.get('turret_mark_y', '120'))
 
         # 2) Zaktualizuj plik settings.json na serwerze
@@ -95,9 +95,9 @@ def settings_view(request):
                 "step_time_turn": 250,
                 "engine_left_calib": 1.0,
                 "engine_right_calib": 1.0,
-                "step_time_turret": 1500.0,
+                "step_time_turret": 1500,
                 "steps_turret": 50,
-                "step_time_turret2": 1500.0,
+                "step_time_turret2": 1500,
                 "steps_turret2": 50,
                 "turret_mark_x": 160,
                 "turret_mark_y": 120
