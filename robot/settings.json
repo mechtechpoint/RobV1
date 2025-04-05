@@ -5,5 +5,7 @@
     "engine_left_calib": 1.0,
     "engine_right_calib": 1.0,
     "step_time_turret": 500.0, 
-    "steps_turret": 200
+    "steps_turret": 200,
+    "turret_mark_x": 160,
+    "turret_mark_y": 120
 }

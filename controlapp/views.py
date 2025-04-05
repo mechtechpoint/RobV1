@@ -48,7 +48,9 @@ def settings_view(request):
         step_time_turret = float(request.POST.get('step_time_turret', '500'))
         steps_turret = int(request.POST.get('steps_turret', '200'))
         step_time_turret2 = float(request.POST.get('step_time_turret2', '500'))
-        steps_turret2 = int(request.POST.get('steps_turret2', '200'))
+        steps_turret2 = int(request.POST.get('steps_turret2', '200')),
+        turret_mark_x = int(request.POST.get('turret_mark_x', '160'))
+        turret_mark_y = int(request.POST.get('turret_mark_y', '120'))
 
         # 2) Zaktualizuj plik settings.json na serwerze
         new_data = {
@@ -60,7 +62,9 @@ def settings_view(request):
             "step_time_turret": step_time_turret,
             "steps_turret": steps_turret,
             "step_time_turret2": step_time_turret2,
-            "steps_turret2": steps_turret2
+            "steps_turret2": steps_turret2,
+            "turret_mark_x": turret_mark_x,
+            "turret_mark_y": turret_mark_y
         }
         with open(SETTINGS_PATH, 'w', encoding='utf-8') as f:
             json.dump(new_data, f, ensure_ascii=False, indent=4)
@@ -94,7 +98,9 @@ def settings_view(request):
                 "step_time_turret": 500.0,
                 "steps_turret": 200,
                 "step_time_turret2": 500.0,
-                "steps_turret2": 200
+                "steps_turret2": 200,
+                "turret_mark_x": 160,
+                "turret_mark_y": 120
             }
 
         return render(request, "controlapp/settings.html", {"settings_data": current_data})

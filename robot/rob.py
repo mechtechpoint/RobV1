@@ -99,7 +99,9 @@ def load_local_settings():
             "step_time_turret": 500.0,
             "steps_turret": 200,
             "step_time_turret2": 500.0,
-            "steps_turret2": 200
+            "steps_turret2": 200,
+            "turret_mark_x": 160,
+            "turret_mark_y": 120
         }
         with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=4)
@@ -140,9 +142,51 @@ def convert_frame_to_jpeg_base64(frame):
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return base64_str
 
+def convert_turret_frame_to_jpeg_base64(frame, mark_x, mark_y):
+    # 1. Konwersja do RGB ndarray
+    img_rgb = frame.to_rgb().to_ndarray()
+    
+    # 2. Do PIL
+    pil_img = Image.fromarray(img_rgb)
+    
+    # Zmniejsz rozdzielczość 2×
+    w, h = pil_img.size
+    pil_img = pil_img.resize((w // 2, h // 2), Image.LANCZOS)
+    
+    # 3. Konwersja do odcieni szarości
+    pil_img = pil_img.convert("L")
+
+    # RYSOWANIE KROPKI - w skali po zmniejszeniu
+    # Zakładam, że mark_x/mark_y były w oryginalnej skali (640×480).
+    # Dzielimy przez 2:
+    mark_x2 = mark_x
+    mark_y2 = mark_y
+
+    # Można użyć np. putpixel albo ImageDraw
+    # Dla prostego rysowania 5 pikseli (środek + góra, dół, lewo, prawo) wystarczy putpixel.
+    # Sprawdźmy, czy punkt mieści się w obrazie:
+    max_x = pil_img.width - 1
+    max_y = pil_img.height - 1
+    
+    coords_to_mark = [
+        (mark_x2, mark_y2),
+        (mark_x2 - 1, mark_y2),
+        (mark_x2 + 1, mark_y2),
+        (mark_x2, mark_y2 - 1),
+        (mark_x2, mark_y2 + 1),
+    ]
+    for (xx, yy) in coords_to_mark:
+        if 0 <= xx <= max_x and 0 <= yy <= max_y:
+            pil_img.putpixel((xx, yy), 255)  # 255 w trybie L = biały
+    
+    # 4. Kompresja do JPEG base64
+    buffer = io.BytesIO()
+    pil_img.save(buffer, format="JPEG", quality=40)
+    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return base64_str
 
 def send_two_camera_frames(websocket):
-    global camera_running, loop
+    global camera_running, loop, local_settings
     try:
         # Pobieramy ścieżki do dwóch kamer
         front_dev, turret_dev = get_my_cameras()
@@ -164,6 +208,8 @@ def send_two_camera_frames(websocket):
         turret_stream = container_turret.streams.video[0]
 
         frame_count = 0
+        turret_mark_x = local_settings.get("turret_mark_x", 160)
+        turret_mark_y = local_settings.get("turret_mark_y", 120)
 
         while camera_running:
             frame_count += 1
@@ -196,7 +242,11 @@ def send_two_camera_frames(websocket):
 
             # Konwersja do grayscale + zmniejszenie 2× + kodowanie JPEG base64
             img_front_b64 = convert_frame_to_jpeg_base64(front_frame)
-            img_turret_b64 = convert_frame_to_jpeg_base64(turret_frame)
+            img_turret_b64 = convert_turret_frame_to_jpeg_base64(
+                turret_frame,
+                turret_mark_x,
+                turret_mark_y
+            )
 
             # Wysyłanie asynchroniczne do WebSocket
             data_to_send = {
