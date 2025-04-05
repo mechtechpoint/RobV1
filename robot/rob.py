@@ -155,25 +155,31 @@ def convert_turret_frame_to_jpeg_base64(frame, mark_x, mark_y):
     
     # 3. Konwersja do odcieni szarości
     pil_img = pil_img.convert("L")
-    # 4. Rysowanie koła o średnicy ~4 px w punkcie (mark_x, mark_y).
-    draw = ImageDraw.Draw(pil_img)
-    
-    # Zdefiniuj promień r=2 => średnica 4 px.  
-    r = 2
-    left   = mark_x - r
-    top    = mark_y - r
-    right  = mark_x + r
-    bottom = mark_y + r
 
-    # Narysuj białe wypełnione koło:
-    draw.ellipse((left, top, right, bottom), fill=255)
+    max_x = pil_img.width - 1
+    max_y = pil_img.height - 1
 
-    # 5. Kompresja do JPEG base64
+    # Rysujemy krzyż (cross) o ramionach długości 3 pikseli w każdą stronę (łącznie 7 px):
+    # - linia pozioma: (mark_x-3 .. mark_x+3, mark_y)
+    # - linia pionowa: (mark_x, mark_y-3 .. mark_y+3)
+
+    # Linia pozioma
+    for dx in range(-3, 4):  # -3, -2, -1, 0, 1, 2, 3
+        xx = mark_x + dx
+        if 0 <= xx <= max_x and 0 <= mark_y <= max_y:
+            pil_img.putpixel((xx, mark_y), 255)
+
+    # Linia pionowa
+    for dy in range(-3, 4):  # -3, -2, -1, 0, 1, 2, 3
+        yy = mark_y + dy
+        if 0 <= yy <= max_y and 0 <= mark_x <= max_x:
+            pil_img.putpixel((mark_x, yy), 255)
+
+    # 4. Kompresja do JPEG w formie base64
     buffer = io.BytesIO()
     pil_img.save(buffer, format="JPEG", quality=40)
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return base64_str
-
 def send_two_camera_frames(websocket):
     global camera_running, loop, local_settings
     try:
