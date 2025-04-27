@@ -192,8 +192,8 @@ def send_two_camera_frames(websocket):
         record = local_settings.get("record", 0)
 
         if record:
-            date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-            base_dir = os.path.join("recordings", date_str)
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            base_dir = os.path.join("recordings", timestamp)
             front_dir  = os.path.join(base_dir, "front")
             turret_dir = os.path.join(base_dir, "turret")
             os.makedirs(front_dir,  exist_ok=True)
