@@ -258,16 +258,17 @@ def send_two_camera_frames(websocket):
                 turret_mark_y
             )
             if record:
-                # zamień base64 na bajty
-                img_front_bytes  = base64.b64decode(img_front_b64)
-                img_turret_bytes = base64.b64decode(img_turret_b64)
+                # front → bytes
+                front_bytes = base64.b64decode(img_front_b64)
+                # turret RAW → zakoduj i dekoduj jeszcze raz bez markera
+                raw_turret_b64 = convert_frame_to_jpeg_base64(turret_frame)
+                turret_bytes   = base64.b64decode(raw_turret_b64)
 
-                # nadaj nazwy plikom (np. numer klatki z zerami wiodącymi)
                 filename = f"{frame_count:06d}.jpg"
                 with open(os.path.join(front_dir,  filename), "wb") as f:
-                    f.write(img_front_bytes)
+                    f.write(front_bytes)
                 with open(os.path.join(turret_dir, filename), "wb") as f:
-                    f.write(img_turret_bytes)
+                    f.write(turret_bytes)
 
 
             # Wysyłanie asynchroniczne do WebSocket
