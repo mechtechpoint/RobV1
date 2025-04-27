@@ -11,6 +11,7 @@ import io
 from PIL import Image
 import subprocess
 import time
+import datetime
 
 arduino_port = "/dev/ttyUSB0"
 baud_rate = 9600
@@ -101,7 +102,8 @@ def load_local_settings():
             "step_time_turret2": 1500,
             "steps_turret2": 50,
             "turret_mark_x": 160,
-            "turret_mark_y": 120
+            "turret_mark_y": 120,
+            "record": 0
         }
         with open(LOCAL_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(default_data, f, indent=4)
@@ -187,6 +189,15 @@ def convert_turret_frame_to_jpeg_base64(frame, mark_x, mark_y):
 def send_two_camera_frames(websocket):
     global camera_running, loop, local_settings
     try:
+        record = local_settings.get("record", 0)
+
+        if record:
+            date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+            base_dir = os.path.join("recordings", date_str)
+            front_dir  = os.path.join(base_dir, "front")
+            turret_dir = os.path.join(base_dir, "turret")
+            os.makedirs(front_dir,  exist_ok=True)
+            os.makedirs(turret_dir, exist_ok=True)
         # Pobieramy ścieżki do dwóch kamer
         front_dev, turret_dev = get_my_cameras()
 
@@ -246,6 +257,18 @@ def send_two_camera_frames(websocket):
                 turret_mark_x,
                 turret_mark_y
             )
+            if record:
+                # zamień base64 na bajty
+                img_front_bytes  = base64.b64decode(img_front_b64)
+                img_turret_bytes = base64.b64decode(img_turret_b64)
+
+                # nadaj nazwy plikom (np. numer klatki z zerami wiodącymi)
+                filename = f"{frame_count:06d}.jpg"
+                with open(os.path.join(front_dir,  filename), "wb") as f:
+                    f.write(img_front_bytes)
+                with open(os.path.join(turret_dir, filename), "wb") as f:
+                    f.write(img_turret_bytes)
+
 
             # Wysyłanie asynchroniczne do WebSocket
             data_to_send = {
